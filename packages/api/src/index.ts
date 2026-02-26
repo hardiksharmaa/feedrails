@@ -3,6 +3,7 @@ import cors from 'cors';
 import { AppStoreScraper } from './services/app-store.service';
 import { IngestionService } from './services/ingestion.service';
 import { prisma } from './lib/prisma';
+import { AiService } from './services/ai.service';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -31,6 +32,19 @@ app.get('/test-pipeline/:appId', async (req, res) => {
       savedAsNew: newCount,
       message: "Check your terminal logs!"
     });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+app.post('/test-ai', async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text) {
+      return res.status(400).json({ error: "Please provide 'text' in the JSON body" });
+    }
+
+    const aiResult = await AiService.analyzeFeedback(text);
+    res.json({ success: true, analysis: aiResult });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
