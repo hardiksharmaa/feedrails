@@ -37,7 +37,7 @@ model RawFeedback {
   metadata    Json?         
   fingerprint String        @unique // NEW: Prevents duplicate reviews!
   createdAt   DateTime      @default(now())
-
+  updatedAt   DateTime      @updatedAt
   insight     AnalyzedInsight? 
 }
 
