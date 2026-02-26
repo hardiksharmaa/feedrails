@@ -1,8 +1,52 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+enum SourceType {
+  APP_STORE
+  REDDIT
+}
+
+enum Sentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+model Source {
+  id          String        @id @default(uuid())
+  name        String
+  type        SourceType
+  config      Json?         // Stores API keys, Subreddit names, or App IDs
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  feedbacks   RawFeedback[]
+}
+
+model RawFeedback {
+  id          String        @id @default(uuid())
+  sourceId    String
+  source      Source        @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  content     String        @db.Text
+  timestamp   DateTime      @default(now()) // When the review was actually posted
+  metadata    Json?         // Stores original author, star rating, etc.
+  createdAt   DateTime      @default(now())
+
+  insight     AnalyzedInsight? // One-to-one link to our AI analysis
+}
+
+model AnalyzedInsight {
+  id            String      @id @default(uuid())
+  feedbackId    String      @unique
+  feedback      RawFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  sentiment     Sentiment
+  tags          String[]    // Postgres array for things like "bug", "ui", "billing"
+  urgencyScore  Int         // 1 to 10 scale to prioritize issues
+  summary       String      @db.Text
+  createdAt     DateTime    @default(now())
 }
