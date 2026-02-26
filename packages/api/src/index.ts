@@ -4,12 +4,34 @@ import { AppStoreScraper } from './services/app-store.service';
 import { IngestionService } from './services/ingestion.service';
 import { prisma } from './lib/prisma';
 import { AiService } from './services/ai.service';
+import { ProcessorService } from './services/processor.service';
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+app.get('/insights', async (req, res) => {
+  try {
+    const insights = await prisma.analyzedInsight.findMany({
+      include: {
+        feedback: true
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+    
+    res.json({
+      success: true,
+      count: insights.length,
+      data: insights
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 app.get('/test-pipeline/:appId', async (req, res) => {
   try {
@@ -45,6 +67,14 @@ app.post('/test-ai', async (req, res) => {
 
     const aiResult = await AiService.analyzeFeedback(text);
     res.json({ success: true, analysis: aiResult });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+app.get('/process-all', async (req, res) => {
+  try {
+    const count = await ProcessorService.processPendingFeedback();
+    res.json({ success: true, processed: count });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

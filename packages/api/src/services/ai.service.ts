@@ -10,7 +10,7 @@ const groq = new Groq({
 export class AiService {
   static async analyzeFeedback(content: string) {
     try {
-      console.log("🧠 Requesting AI Synthesis from Groq (Llama 3)...");
+      console.log("Requesting AI Synthesis from Groq (Llama 3)...");
       
       const chatCompletion = await groq.chat.completions.create({
         messages: [
