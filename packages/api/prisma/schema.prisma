@@ -33,11 +33,12 @@ model RawFeedback {
   sourceId    String
   source      Source        @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   content     String        @db.Text
-  timestamp   DateTime      @default(now()) // When the review was actually posted
-  metadata    Json?         // Stores original author, star rating, etc.
+  timestamp   DateTime      @default(now()) 
+  metadata    Json?         
+  fingerprint String        @unique // NEW: Prevents duplicate reviews!
   createdAt   DateTime      @default(now())
 
-  insight     AnalyzedInsight? // One-to-one link to our AI analysis
+  insight     AnalyzedInsight? 
 }
 
 model AnalyzedInsight {
