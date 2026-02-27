@@ -10,11 +10,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@clerk/clerk-react": "^5.61.2",
     "axios": "^1.13.5",
+    "jspdf": "^4.2.0",
     "lucide-react": "^0.575.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.1",
+    "react-toastify": "^11.0.5",
     "recharts": "^3.7.0"
   },
   "devDependencies": {

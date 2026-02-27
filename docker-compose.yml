@@ -19,9 +19,84 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: feedrails-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - feedrails-network
+    volumes:
+      - feedrails-redisdata:/data
+
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    container_name: feedrails-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://redis:6379
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY}
+      CRON_SECRET: ${CRON_SECRET}
+    ports:
+      - "3000:3000"
+    networks:
+      - feedrails-network
+
+  worker:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    container_name: feedrails-worker
+    restart: unless-stopped
+    command: ["npm", "run", "start:worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://redis:6379
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY}
+      CRON_SECRET: ${CRON_SECRET}
+    networks:
+      - feedrails-network
+
+  web:
+    build:
+      context: .
+      dockerfile: packages/web/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000}
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY}
+    container_name: feedrails-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "5173:80"
+    networks:
+      - feedrails-network
+
 networks:
   feedrails-network:
     driver: bridge
 
 volumes:
   feedrails-pgdata:
+  feedrails-redisdata:

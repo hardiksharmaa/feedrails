@@ -1,40 +1,89 @@
 import { prisma } from '../lib/prisma';
-import { AiService } from './ai.service';
-import crypto from 'crypto';
+import { analysisQueue } from '../queues/analysis.queue';
 
 export class ProcessorService {
-  static async processPendingFeedback() {
+  static async processPendingFeedback(
+    userId?: string,
+    projectId?: string,
+    processLimit?: number,
+    batchSize = 10
+  ) {
+    const safeLimit = Number.isFinite(processLimit)
+      ? Math.max(1, Math.min(Number(processLimit), 5000))
+      : undefined;
+    const safeBatchSize = Math.max(1, Math.min(batchSize, 25));
 
     const pending = await prisma.rawFeedback.findMany({
-      where: { insight: { is: null } },
-      take: 50,
+      where: {
+        insight: { is: null },
+        ...(userId
+          ? {
+              source: {
+                project: {
+                  userId,
+                  ...(projectId ? { id: projectId } : {}),
+                },
+              },
+            }
+          : {}),
+      },
+      ...(safeLimit ? { take: safeLimit } : {}),
+      include: {
+        source: {
+          select: {
+            projectId: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
     });
 
-    console.log(`Found ${pending.length} reviews to analyze.`);
-    let successCount = 0;
+    if (pending.length === 0) {
+      return 0;
+    }
 
-    for (const feedback of pending) {
-      try {
-        const analysis = await AiService.analyzeFeedback(feedback.content);
+    const byProject = pending.reduce((acc, feedback) => {
+      const pid = feedback.source.projectId;
+      if (!acc.has(pid)) {
+        acc.set(pid, [] as string[]);
+      }
+      acc.get(pid)?.push(feedback.id);
+      return acc;
+    }, new Map<string, string[]>());
 
-        await prisma.analyzedInsight.create({
+    const jobs: Array<{
+      name: string;
+      data: {
+        feedbackIds: string[];
+        projectId: string;
+        userId?: string;
+      };
+      opts: {
+        jobId: string;
+      };
+    }> = [];
+
+    for (const [pid, ids] of byProject.entries()) {
+      for (let index = 0; index < ids.length; index += safeBatchSize) {
+        const chunk = ids.slice(index, index + safeBatchSize);
+        jobs.push({
+          name: 'analyze-feedback-batch',
           data: {
-            id: crypto.randomUUID(),
-            feedbackId: feedback.id,
-            sentiment: analysis.sentiment,
-            tags: analysis.tags,
-            urgencyScore: analysis.urgencyScore,
-            summary: analysis.summary
-          }
+            feedbackIds: chunk,
+            projectId: pid,
+            userId,
+          },
+          opts: {
+            jobId: `analyze-feedback-${pid}-${chunk[0]}`,
+          },
         });
-
-        successCount++;
-        console.log(`Analyzed feedback: ${feedback.id.substring(0, 8)}...`);
-      } catch (error) {
-        console.error(`Failed to process feedback ${feedback.id}:`, error);
       }
     }
 
-    return successCount;
+    await analysisQueue.addBulk(jobs);
+
+    return pending.length;
   }
 }

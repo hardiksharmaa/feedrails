@@ -16,6 +16,10 @@ interface Analysis {
   summary: string;
 }
 
+interface BatchAnalysisItem extends Analysis {
+  id: string;
+}
+
 const FALLBACK_ANALYSIS: Analysis = {
   sentiment: "NEUTRAL",
   tags: ["general feedback"],
@@ -142,6 +146,49 @@ function getFailedGeneration(error: unknown): string | null {
   return outer.error?.error?.failed_generation ?? null;
 }
 
+function getRetryDelayMs(error: unknown): number {
+  if (!error || typeof error !== 'object') {
+    return 0;
+  }
+
+  const message = String((error as { message?: unknown }).message ?? '');
+  if (!message.includes('rate_limit_exceeded')) {
+    return 0;
+  }
+
+  const match = message.match(/Please try again in\s*([0-9.]+)s/i);
+  const seconds = match ? Number(match[1]) : 2;
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return 2000;
+  }
+
+  return Math.min(Math.ceil(seconds * 1000) + 300, 10000);
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function toBatchAnalysis(payload: unknown): BatchAnalysisItem[] {
+  const record = (payload && typeof payload === 'object' ? payload : {}) as {
+    items?: Array<Record<string, unknown>>;
+  };
+
+  const items = Array.isArray(record.items) ? record.items : [];
+  return items
+    .map((item) => {
+      const id = String(item.id ?? '').trim();
+      if (!id) {
+        return null;
+      }
+      const base = toAnalysis(item);
+      return { id, ...base } satisfies BatchAnalysisItem;
+    })
+    .filter((item): item is BatchAnalysisItem => item !== null);
+}
+
 export class AiService {
   static async analyzeFeedback(content: string) {
     try {
@@ -196,5 +243,100 @@ export class AiService {
       console.warn("Falling back to default analysis due to unrecoverable AI response.");
       return FALLBACK_ANALYSIS;
     }
+  }
+
+  static async analyzeFeedbackBatch(items: Array<{ id: string; content: string }>) {
+    if (items.length === 0) {
+      return [] as BatchAnalysisItem[];
+    }
+
+    const safeItems = items.slice(0, 10).map((item) => ({
+      id: item.id,
+      content: String(item.content ?? '').trim(),
+    }));
+
+    let lastError: unknown = null;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        console.log(`Requesting Groq batch synthesis for ${safeItems.length} feedback items...`);
+
+        const chatCompletion = await groq.chat.completions.create({
+          messages: [
+            {
+              role: 'system',
+              content: `You analyze customer feedback in batches. Return strict JSON with no markdown.
+              JSON Schema:
+              {
+                "items": [
+                  {
+                    "id": string,
+                    "sentiment": "POSITIVE" | "NEUTRAL" | "NEGATIVE",
+                    "tags": string[],
+                    "urgencyScore": number (1-10),
+                    "summary": string (1 sentence)
+                  }
+                ]
+              }
+              Rules:
+              - Include every input id exactly once.
+              - Valid JSON only.
+              - Keep summary concise in one sentence.`
+            },
+            {
+              role: 'user',
+              content: JSON.stringify({ items: safeItems }),
+            },
+          ],
+          model: 'llama-3.3-70b-versatile',
+          response_format: { type: 'json_object' },
+          temperature: 0.1,
+        });
+
+        const responseText = chatCompletion.choices[0].message.content;
+        if (!responseText) {
+          throw new Error('Empty response from AI');
+        }
+
+        const parsed = toBatchAnalysis(parseJsonSafely(responseText));
+        const lookup = new Map(parsed.map((item) => [item.id, item]));
+
+        return safeItems.map((item) => {
+          const result = lookup.get(item.id);
+          if (result) {
+            return result;
+          }
+
+          return {
+            id: item.id,
+            ...FALLBACK_ANALYSIS,
+          } satisfies BatchAnalysisItem;
+        });
+      } catch (error: any) {
+        lastError = error;
+        console.error('Groq Batch AI Error:', error.message);
+
+        const retryDelayMs = getRetryDelayMs(error);
+        if (retryDelayMs > 0 && attempt < 2) {
+          await sleep(retryDelayMs);
+          continue;
+        }
+
+        break;
+      }
+    }
+
+    const failedGeneration = getFailedGeneration(lastError);
+    if (failedGeneration) {
+      try {
+        const parsed = toBatchAnalysis(parseJsonSafely(failedGeneration));
+        const lookup = new Map(parsed.map((item) => [item.id, item]));
+        return safeItems.map((item) => lookup.get(item.id) ?? { id: item.id, ...FALLBACK_ANALYSIS });
+      } catch {
+        return safeItems.map((item) => ({ id: item.id, ...FALLBACK_ANALYSIS }));
+      }
+    }
+
+    return safeItems.map((item) => ({ id: item.id, ...FALLBACK_ANALYSIS }));
   }
 }

@@ -3,17 +3,25 @@
   "version": "1.0.0",
   "main": "src/index.ts",
   "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "start:worker": "node dist/workers/analysis.worker.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev:worker": "ts-node-dev --respawn --transpile-only src/workers/analysis.worker.ts",
+    "worker": "ts-node src/workers/analysis.worker.ts",
     "db:check": "ts-node src/db-check.ts"
   },
   "dependencies": {
+    "@clerk/express": "^1.7.75",
     "@google/generative-ai": "^0.24.1",
     "@prisma/adapter-pg": "^7.4.1",
     "@prisma/client": "^7.4.1",
+    "bullmq": "^5.70.1",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "groq-sdk": "^0.37.0",
+    "ioredis": "^5.9.3",
     "pg": "^8.19.0"
   },
   "devDependencies": {

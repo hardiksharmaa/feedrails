@@ -3,3 +3,17 @@
 body {
   @apply bg-[#f5f6f8] text-slate-800 antialiased;
 }
+
+input,
+textarea,
+select {
+  border-color: #000000;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: #000000;
+  outline: none;
+  box-shadow: 0 0 0 1px #000000;
+}

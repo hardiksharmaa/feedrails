@@ -17,11 +17,42 @@ enum Sentiment {
   NEGATIVE
 }
 
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+model User {
+  id          String    @id @default(uuid())
+  clerkUserId String    @unique
+  email       String    @unique
+  name        String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  projects    Project[]
+}
+
+model Project {
+  id          String        @id @default(uuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  slug        String
+  status      ProjectStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  sources     Source[]
+
+  @@unique([userId, slug])
+}
+
 model Source {
   id          String        @id @default(uuid())
+  projectId   String
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   name        String
   type        SourceType
-  config      Json?         // Stores API keys, Subreddit names, or App IDs
+  config      Json?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -35,7 +66,7 @@ model RawFeedback {
   content     String        @db.Text
   timestamp   DateTime      @default(now()) 
   metadata    Json?         
-  fingerprint String        @unique // NEW: Prevents duplicate reviews!
+  fingerprint String        @unique
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   insight     AnalyzedInsight? 
@@ -46,8 +77,8 @@ model AnalyzedInsight {
   feedbackId    String      @unique
   feedback      RawFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
   sentiment     Sentiment
-  tags          String[]    // Postgres array for things like "bug", "ui", "billing"
-  urgencyScore  Int         // 1 to 10 scale to prioritize issues
+  tags          String[]
+  urgencyScore  Int
   summary       String      @db.Text
   createdAt     DateTime    @default(now())
 }

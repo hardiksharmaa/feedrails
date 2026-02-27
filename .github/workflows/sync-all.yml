@@ -1,0 +1,20 @@
+name: Sync All Projects
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync-all:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger sync webhook
+        env:
+          SYNC_WEBHOOK_URL: ${{ secrets.FEEDRAILS_SYNC_WEBHOOK_URL }}
+          CRON_SECRET: ${{ secrets.FEEDRAILS_CRON_SECRET }}
+        run: |
+          curl --fail --show-error --silent \
+            -X POST "$SYNC_WEBHOOK_URL" \
+            -H "x-cron-secret: $CRON_SECRET" \
+            -H "Content-Type: application/json"
